@@ -1,158 +1,227 @@
-library(fGarch)
-library(fUnitRoots)
-library(rugarch)
-library(rmgarch)
-library(forecast)
-library(plm)
-library(readxl) 
+setwd("~/Desktop/econometrics_final_project")
 library(tidyverse) 
+library(readxl) 
+library(lubridate) 
+library(fGarch)
+library(rugarch) 
+library(dplyr)
+library(plm) 
 
-## Error Doing Arch Model at column 25
-archT <- function(df, store) {
-  for (i in 2:55) {
-    print(i)
-    model_specify <- ugarchspec(mean.model=list(armaOrder=c(1,0)))
+Arch_1 <- function(log_returns, ticker_names_unique) {
+  ## Create the Arch(1) table 
+  
+  arch_1 <- tibble(
+    Date = log_returns$Date
+  )
+  
+  archspecs <- ugarchspec(mean.model = list(armaOrder = c(1,0)))
+  for(tic in ticker_names_unique){
     
-    model_fit = ugarchfit(spec = model_specify, data = df[[i]])
-    store[i] <- model_fit@fit$sigma
-  }
-  names(store) <- names(Returns_Sheet)
-  return(store)
-}
-
-## Quick run time
-garchT <- function(df, store) {
-  for (i in 2:55) {
-    print(i)
-    gar <- garchFit(formula = ~garch(1,1), data = Returns_Sheet[[i]])
-    store[i] <- gar@sigma.t
-  }
-  names(store) <- names(Returns_Sheet)
-  return(store)
-}
-
-## Long time to run
-argarchT <- function(df, store) {
-  for (i in 2:55) {
-    print(i)
-    specR <- ugarchspec(variance.model=list(model="sGARCH",garchOrder=c(1,1)),
-                        mean.model=list(armaOrder=c(1,0), archm=T, archpow=2),
-                        distribution.model="std")
-    argar<-ugarchfit(spec=specR,data= df[[i]])
-    store[i] <- argar@fit$sigma
-  }
-  names(store) <- names(Returns_Sheet)
-  return(store)
-}
-
-annual <- function(df, store) {
-  for (i in 2:55) {
-    store[i] = df[i]*sqrt(252)
-  }
-  names(store) <- names(Returns_Sheet)
-  return(store)
-}
-
-restructure <- function(df) {
-  storea <- data.frame(matrix(ncol=5, nrow=0))
-  colnames(storea) <- c("Ticker", "Date", "Volatility", "Large", "Dodd")
-  checkReg <- c("BOH", "SCHW", "ZION", "SIVB", "MTB", "JPM", "VLY", "CBSH", "UMBF", "KEY", "HBAN", "PNC", 
-                "FITB", "FCNCA", "SNV", "TRMK", "FHN", "BXS", "CFR", "IBOC", "PB", "STT", "FULT", "USB", 
-                "WFC", "BPOP", "WBS", "ASB", "NTRS", "CMA", "BEN", "CATY", "BOKF", "NYCB", "MS", "WTFC", 
-                "GS", "EWBC", "FBP", "UMPQ", "FNB", "WAFD", "PBCT", "RJF", "FBC", "PFG")
-  dodd <- c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)
-  for (i in 1:54) {
-    if (colnames(df)[i] %in% checkReg) {
-      dftest = data.frame(Ticker = colnames(garch)[i], 
-                          Date = garch$Date, Volatility = garch[i],
-                          Large = 0, Dodd = dodd)
-      names(dftest) <- c("Ticker", "Date", "Volatility", "Large", "Dodd")
-      storea <- rbind(storea, dftest)
-    }
-    else {
-      dftest = data.frame(Ticker = colnames(garch)[i], 
-                          Date = garch$Date, Volatility = garch[i],
-                          Large = 1, Dodd = dodd)
-      names(dftest) <- c("Ticker", "Date", "Volatility", "Large", "Dodd")
-      storea <- rbind(storea, dftest)
-    }
+    volatility <- ugarchfit(spec = archspecs, data = log_returns[[tic]]) 
+    arch_1[[tic]] <- volatility@fit$sigma
     
-  } 
-  return(storea)
+  }
+  return(arch_1) 
+  
 }
 
-## For Hard Environment Reset (To Clear Clutter)
-rm(list = ls())
 
-## Generate columns for fit
-sample(1:55, 3, replace = TRUE)
-
-Returns_Sheet <- read_excel('Returns.xlsx', sheet = 'No_Nulls_Log_Returns')
-
-## Visual ACF tests - Numbers I Generated
-acf(Returns_Sheet[[20]])
-pacf(Returns_Sheet[[20]])
-acf(Returns_Sheet[[36]])
-pacf(Returns_Sheet[[36]])
-acf(Returns_Sheet[[51]])
-pacf(Returns_Sheet[[51]])
-
-## Squared tests
-acf(Returns_Sheet[[20]]^2)
-acf(Returns_Sheet[[36]]^2)
-acf(Returns_Sheet[[51]]^2)
-
-## Looking at P-Values
-Box.test(Returns_Sheet[[20]], lag = 1, type = "Ljung") # Best was lag of 1
-Box.test(Returns_Sheet[[36]], lag = 1, type = "Ljung") # PACF of 1****
-Box.test(Returns_Sheet[[51]], lag = 1, type = "Ljung") # Best was lag of 1
-
-## Find AR Lag Order and MA Order That Fits Each Column
-fit_arima<-auto.arima(Returns_Sheet[[15]],d=1,D=1,stepwise=FALSE,
-                      approximation = FALSE, trace = TRUE)
-
-fit_arima<-auto.arima(Returns_Sheet[[49]],d=1,D=1,stepwise=FALSE,
-                      approximation = FALSE, trace = TRUE)
-
-fit_arima<-auto.arima(Returns_Sheet[[51]],d=1,D=1,stepwise=FALSE,
-                      approximation = FALSE, trace = TRUE)
-
-## ARIMA(5,1,0) Best Fit
-store <- data.frame(date = Returns_Sheet[[1]])
-arch <- archT(Returns_Sheet, store)
-arch <- annual(arch, store)
-test <- read.zoo(arch)
-testa <- aggregate(test, as.yearqtr, mean)
-arch <- data.frame(testa)
-
-## Using Garch(1,1) Model
-garch <- garchT(Returns_Sheet, store)
-garch <- annual(garch, store)
-test <- read.zoo(garch)
-testa <- aggregate(test, as.yearqtr, mean)
-garch <- data.frame(testa)
-
-## Arch + Garch Model
-argarch <- argarchT(Returns_Sheet, store)
-argarch <- annual(argarch, store)
-test <- read.zoo(argarch)
-testa <- aggregate(test, as.yearqtr, mean)
-argarch <- data.frame(testa)
-
-## Prepare for Analysis (And add in Dummy Vars)
-arch$Date <- rownames(arch)
-garch$Date <- rownames(garch)
-argarch$Date <- rownames(argarch)
-
-rownames(arch) <- 1:nrow(arch)
-rownames(garch) <- 1:nrow(garch)
-rownames(argarch) <- 1:nrow(argarch)
+Garch_1_1 <- function(log_returns, ticker_names_unique){
+  ## Create the Garch(1,1) table 
+  
+  garch_1_1 <- tibble(
+    date = log_returns$Date
+  )
+  
+  for (tic in ticker_names_unique){
+    garch_1_1[[tic]] <- garchFit(formula = ~garch(1,1), 
+                                 data = log_returns[[tic]])@sigma.t
+  }
+  
+  return(garch_1_1) 
+}
 
 
-arch1 <- restructure(arch)
-garch1 <- restructure(garch)
-argarch1 <- restructure(argarch)
+ArchGarch <- function(log_returns, ticker_names_unique){
+  ## Create the AR + GARCH model 
+  
+  archgarch_1_1 <- tibble(
+    Date = log_returns$Date
+  )
+  
+  archgarchspecs <- ugarchspec(
+    variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), 
+    mean.model = list(armaOrder = c(1,0), archm = T, archpow = 2), 
+    distribution.model = 'std')
+  
+  for (tic in ticker_names_unique){
+    archgarchfit <- ugarchfit(spec = archgarchspecs, 
+                              data = log_returns[[tic]])
+    
+    archgarch_1_1[[tic]] <- archgarchfit@fit$sigma
+  }
+  
+  return(archgarch_1_1) 
+  
+}
 
-test <- summary(lm(formula = arch1$Volatility ~ arch1$Large))
-test1 <- plm(formula = arch1$Volatility ~ arch1$Large, data = arch1, index = c("Ticker", "Date"), model = "within")
+
+
+
+Format <- function(volatility) {
+  ## Format the data 
+  ## Annualize the volatility 
+  ## average volatility for each quarter. 
+  
+  a <- volatility %>% 
+    group_by(Quarter = quarter(ymd(Date), with_year = T)) %>% 
+    summarize_at(vars(-Date), mean)
+  
+  return(a) 
+  
+}
+
+
+
+
+
+##Read in the banks data 
+bank_returns <- read_excel('Returns.xlsx', sheet = 'Banks_Data') %>%
+  ## We want to see all the distinct tickers for each year, 
+  ## along with their banks mean assets. 
+  distinct(ticker, bank_meanAssets) %>%
+  
+  ## Create a dummy variable that outputs 1 if the bank is Large Cap 
+  ## (Greater than 50Billion) and 0 if it is regional 
+  ## (Greater than 10Billion, Less than 50Billion) 
+  group_by(LargeBankDummy = ifelse(bank_meanAssets >= 50, 1, 0) ) %>% 
+  
+  ## Keep just the ticker and the dummy variable
+  select(ticker, LargeBankDummy) %>% 
+  
+  ## Remove duplicates
+  distinct(ticker)
+
+## Read in the log returns 
+log_returns <- read_excel('Returns.xlsx', 
+                          sheet = 'No_Nulls_Log_Returns')[-c(1,2), ] %>% 
+  
+  ##Convert to date format
+  mutate(Date = ymd(as.character((as.Date(as.numeric(Date), 
+                                          origin = '1899-12-30') )))) %>% 
+  
+  ## We are trying to find monthly log returns given
+  ## daily log returns. In order to do this, we just need to 
+  ## find the sum of the log returns within each month. 
+  mutate_at(vars(-Date), as.numeric)
+
+## Select Randomly 3 models to find the order of the test. 
+## WFC, AIG, FBP were arbitrarily chosen to determine the order 
+## for this test. 
+acf(log_returns$FBP, main = 'FBP ACF') 
+acf((log_returns$FBP) ^2, main = 'FBP^2 ACF')
+pacf(log_returns$FBP, main = 'FBP PACF') 
+pacf((log_returns$FBP)^2, main = 'FBP^2 PACF')
+
+## The FBP determines a (1,2) model 
+
+acf(log_returns$AIG, main = 'AIG ACF') 
+acf((log_returns$AIG)^2, main = 'AIG^2 ACF') 
+pacf(log_returns$AIG, main = 'AIG PACF') 
+pacf((log_returns$AIG)^2, main = 'AIG^2 PACF') 
+
+## AIG determines a (1,2) model 
+
+acf(log_returns$FULT, main = 'FULT ACF') 
+acf((log_returns$FULT)^2, main = 'FULT^2 ACF') 
+pacf(log_returns$FULT, main = 'FULT PACF') 
+pacf((log_returns$FULT)^2, main = 'FULT^2 PACF') 
+
+## FULT determines a (1,1) model
+
+## We are going to generate an ARCH(1) model, 
+## A Garch(1,2) model, 
+## And a AR(1) + Garch(1,1) model 
+ticker_names_unique <- unique(names(log_returns[-c(1)]))
+
+
+
+
+## Create the Arch(1) table
+arch1 <- Arch_1(log_returns, ticker_names_unique)
+
+## Create the Garch(1,1) table 
+garch11 <- Garch_1_1(log_returns, ticker_names_unique) %>% 
+  rename(Date = date) 
+
+garch11 %>% group_by(year = year(ymd(Date))) 
+  
+
+
+## Create a Arch(1) + Garch(1,1) 
+archgarch11 <- ArchGarch(log_returns, ticker_names_unique)
+
+
+
+
+saveRDS(arch1, file = 'arch1.rds') 
+saveRDS(garch11, file = 'garch11.rds') 
+saveRDS(archgarch11, file = 'archgarch11.rds') 
+
+
+
+arch_1 <- Format(arch1)
+garch_1_1 <- Format(garch11)
+archgarch_1_1 <- Format(archgarch11) 
+
+
+
+
+Panel <- function(volatility_model, ticker_names_unique, bank_returns){
+  
+  
+  
+  
+  
+  panel <- tibble(Quarter = numeric(), 
+                  Bank = character(), 
+                  volatility = numeric(), 
+                  LargeDummy = numeric())
+  
+  
+  for (tic in ticker_names_unique){
+    
+    large_bank_dummy <- subset.data.frame(bank_returns, ticker == tic) %>% 
+      pull(LargeBankDummy) 
+    
+    subset_df <- volatility_model[,c(tic, 'Quarter')] %>% 
+      add_column(LargeDummy = large_bank_dummy)
+    
+    panel <- panel %>% 
+      add_row(
+        Quarter = subset_df$Quarter, 
+        volatility = subset_df[[tic]], 
+        LargeDummy = subset_df$LargeDummy, 
+        Bank = tic
+      )
+    
+  }
+  return(panel %>% mutate(date = yq(Quarter)) %>% 
+           select(-Quarter))
+}
+
+## Panel data 
+arch_1_panel <- Panel(arch_1, ticker_names_unique, bank_returns)
+
+arch_panel <- pdata.frame(arch_1_panel, index = c('date', 'Bank'))
+pdim(arch_panel) 
+
+
+summary(plm(volatility ~ LargeDummy, 
+    data = arch_panel, model = 'within') )
+
+
+
+
+glimpse(arch_1_panel)
+
